@@ -15,6 +15,8 @@
  */
 package org.springframework.data.convert;
 
+import java.util.Optional;
+
 import org.springframework.data.util.TypeInformation;
 
 /**
@@ -30,7 +32,7 @@ public interface TypeMapper<S> {
 	 * @param source must not be {@literal null}.
 	 * @return
 	 */
-	TypeInformation<?> readType(S source);
+	Optional<TypeInformation<?>> readType(S source);
 
 	/**
 	 * Returns the {@link TypeInformation} from the given source if it is a more concrete type than the given default one.
@@ -39,7 +41,7 @@ public interface TypeMapper<S> {
 	 * @param defaultType
 	 * @return
 	 */
-	<T> TypeInformation<? extends T> readType(S source, TypeInformation<T> defaultType);
+	<T> Optional<TypeInformation<? extends T>> readType(S source, Optional<? extends TypeInformation<T>> defaultType);
 
 	/**
 	 * Writes type information for the given type into the given sink.

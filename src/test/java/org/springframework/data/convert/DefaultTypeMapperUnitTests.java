@@ -17,16 +17,20 @@ package org.springframework.data.convert;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static org.springframework.data.util.OptionalAssert.*;
 
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.springframework.data.mapping.Alias;
+import org.springframework.data.util.CastUtils;
 import org.springframework.data.util.ClassTypeInformation;
 import org.springframework.data.util.TypeInformation;
 
@@ -39,10 +43,9 @@ import org.springframework.data.util.TypeInformation;
 public class DefaultTypeMapperUnitTests {
 
 	static final TypeInformation<String> STRING_TYPE_INFO = ClassTypeInformation.from(String.class);
-	static final String STRING = String.class.getName();
+	static final Alias ALIAS = Alias.of(String.class.getName());
 
 	@Mock TypeAliasAccessor<Map<String, String>> accessor;
-
 	@Mock TypeInformationMapper mapper;
 
 	DefaultTypeMapper<Map<String, String>> typeMapper;
@@ -52,22 +55,21 @@ public class DefaultTypeMapperUnitTests {
 	public void setUp() {
 
 		this.typeMapper = new DefaultTypeMapper<Map<String, String>>(accessor, Arrays.asList(mapper));
-		this.source = Collections.singletonMap("key", STRING);
+		this.source = Collections.singletonMap("key", ALIAS.toString());
 
-		doReturn(STRING).when(accessor).readAliasFrom(source);
-		doReturn(STRING_TYPE_INFO).when(mapper).resolveTypeFrom(STRING);
+		doReturn(ALIAS).when(accessor).readAliasFrom(source);
+		doReturn(Optional.of(STRING_TYPE_INFO)).when(mapper).resolveTypeFrom(ALIAS);
 	}
 
 	@Test
-	@SuppressWarnings("rawtypes")
 	public void cachesResolvedTypeInformation() {
 
-		TypeInformation<?> information = typeMapper.readType(source);
-		assertThat(information).isEqualTo((TypeInformation) STRING_TYPE_INFO);
-		verify(mapper, times(1)).resolveTypeFrom(STRING);
+		Optional<TypeInformation<?>> information = typeMapper.readType(source);
+		assertThat(information).hasValue(STRING_TYPE_INFO);
+		verify(mapper, times(1)).resolveTypeFrom(ALIAS);
 
 		typeMapper.readType(source);
-		verify(mapper, times(1)).resolveTypeFrom(STRING);
+		verify(mapper, times(1)).resolveTypeFrom(ALIAS);
 	}
 
 	/**
@@ -76,8 +78,8 @@ public class DefaultTypeMapperUnitTests {
 	@Test
 	public void returnsTypeAliasForInformation() {
 
-		Object alias = "alias";
-		when(mapper.createAliasFor(STRING_TYPE_INFO)).thenReturn(alias);
+		Alias alias = Alias.of("alias");
+		doReturn(alias).when(mapper).createAliasFor(STRING_TYPE_INFO);
 
 		assertThat(this.typeMapper.getAliasFor(STRING_TYPE_INFO)).isEqualTo(alias);
 	}
@@ -89,16 +91,23 @@ public class DefaultTypeMapperUnitTests {
 	public void specializesRawSourceTypeUsingGenericContext() {
 
 		ClassTypeInformation<Foo> root = ClassTypeInformation.from(Foo.class);
-		TypeInformation<?> propertyType = root.getProperty("abstractBar");
+		Optional<TypeInformation<Character>> propertyType = root.getProperty("abstractBar").map(CastUtils::cast);
 		TypeInformation<?> barType = ClassTypeInformation.from(Bar.class);
 
-		doReturn(barType).when(accessor).readAliasFrom(source);
-		doReturn(barType).when(mapper).resolveTypeFrom(barType);
+		doReturn(Alias.of(barType)).when(accessor).readAliasFrom(source);
+		doReturn(Optional.of(barType)).when(mapper).resolveTypeFrom(Alias.of(barType));
 
-		TypeInformation<?> result = typeMapper.readType(source, propertyType);
+		Optional<?> result = typeMapper.readType(source, propertyType);
 
-		assertThat(result.getType()).isEqualTo(Bar.class);
-		assertThat(result.getProperty("field").getType()).isEqualTo(Character.class);
+		assertThat(result).hasValueSatisfying(it -> {
+
+			assertThat(it).isInstanceOf(TypeInformation.class);
+
+			TypeInformation<?> typeInformation = TypeInformation.class.cast(it);
+
+			assertThat(typeInformation.getType()).isEqualTo(Bar.class);
+			assertOptional(typeInformation.getProperty("field")).value(nested -> nested.getType()).isEqualTo(Character.class);
+		});
 	}
 
 	static class TypeWithAbstractGenericType<T> {
